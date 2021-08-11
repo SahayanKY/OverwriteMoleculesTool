@@ -2,6 +2,7 @@ import argparse
 import io
 import itertools
 
+import numpy as np
 import pandas as pd
 from sklearn import linear_model
 
@@ -22,6 +23,37 @@ def readXYZFiles(files):
         xyzdfs.append(xyzdf)
 
     return xyzdfs
+
+def estimate_conversionParameter(X, Y):
+    # https://www.slideshare.net/ttamaki/20090924
+    # X: previous coordinates (n*3 matrix)
+    # Y: current coordinates  (n*3 matrix)
+    #
+    # Y ~ X @ R.T + t
+    # となるようなRとtを求める
+    #
+    X_mean = np.mean(X, axis=0)
+    Y_mean = np.mean(Y, axis=0)
+
+    X_shift = X - X_mean
+    Y_shift = Y - Y_mean
+
+    # (3*n).(n*3)の内積をとる
+    # 特異値分解を行う行列を計算
+    W = X_shift.T @ Y_shift
+
+    # Wを特異値分解
+    U, Sigma, VT = np.linalg.svd(W)
+
+    # 回転行列Rを計算
+    detVU = np.linalg.det(VT @ U)
+    R = VT.T @ np.diag([1,1, detVU]) @ U.T
+
+    # 並進移動tを計算
+    # Y_mean = X_mean @ R.T + tより計算
+    t = Y_mean - X_mean @ R.T
+
+    return R, t
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='ovwmols : Overwrite Molecule Files.')
