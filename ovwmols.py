@@ -4,7 +4,7 @@ import itertools
 
 import numpy as np
 import pandas as pd
-from sklearn import linear_model
+from scipy.spatial.distance import squareform
 
 def readXYZFiles(files):
     xyzdfs = []
@@ -65,13 +65,21 @@ if __name__ == '__main__':
     # 引数解析
     args = parser.parse_args()
     refatoms = [int(s) for s in args.ref]
+    numFile = len(args.file)
 
     # 各ファイルを読み込みDataFrameに変換する
     xyzdfs = readXYZFiles(args.file)
 
     # 各ファイル同士で座標変換による重ね合わせを行い、
     # 最も他のファイルとの一致が良いファイルを後の基準ファイルにする
-    for xyzdf_i, xyzdf_j in itertools.combinations(xyzdfs, 2):
+    scorelist = [[0]*numFile for i in range(numFile)]
+    rotateMatrixList = [[0]*numFile for i in range(numFile)]
+    transMatrixList = [[0]*numFile for i in range(numFile)]
+    for i, j in itertools.combinations(range(numFile), 2):
+        # i < j
+        xyzdf_i = xyzdfs[i]
+        xyzdf_j = xyzdfs[j]
+
         if len(refatoms) != 0:
             xyzdf_i_refs = xyzdf_i.iloc[refatoms]
             xyzdf_j_refs = xyzdf_j.iloc[refatoms]
@@ -82,9 +90,32 @@ if __name__ == '__main__':
         # TODO
         # assertとしてxyzdf_i_refsとxyzdf_j_refsの元素記号が一致しているか確認する
 
-        # 姿勢推定
+        # DataFrameとしてはここでは使わないのでndarrayに変換
+        xyz_i_refs = xyzdf_i_refs[['x','y','z']].values
+        xyz_j_refs = xyzdf_j_refs[['x','y','z']].values
+        # 変換パラメータ推定
         # Rとtを求める
+        R, t = estimate_conversionParameter(xyz_i_refs, xyz_j_refs)
+        rotateMatrixList[i][j] = R
+        transMatrixList[i][j] = t
 
+        # Rとtを使ってxyzdf_iからxyzdf_jを予測し、一致具合を二乗和で評価
+        # n*3行列
+        errorxyz = xyz_j_refs - (xyz_i_refs @ R.T + t)
         # score評価、記録
+        score = np.sum(np.power(errorxyz,2))
+        scorelist[i][j] = score
+        scorelist[j][i] = score
+
+    # scorelistの各行ごとにscoreの和をとる
+    # -> 最も他との一致がいいファイル(基準ファイルreffileindex)(最も総和値が小さい行)を探す
+    scorelist = np.sum(scorelist, axis=1)
+    reffileindex = np.argmin(scorelist)
+
+    # rotateMatrixListとtransMatrixListと基準ファイル(reffile)を使って
+    # 他のファイルの座標を変換し重ね合わせる
+
+
+
 
 
