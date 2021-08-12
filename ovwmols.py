@@ -113,7 +113,41 @@ if __name__ == '__main__':
     reffileindex = np.argmin(scorelist)
 
     # rotateMatrixListとtransMatrixListと基準ファイル(reffile)を使って
-    # 他のファイルの座標を変換し重ね合わせる
+    # 他のファイルの座標を
+    # 基準ファイルの座標に重なるように変換する
+    # 変換後のデータはリストに記録していき、最後にファイル出力する
+    convertedxyzdata = []
+    for j, xyzdf_j in enumerate(xyzdfs):
+        if j == reffileindex:
+            # この場合は恒等変換
+            R = np.diag([1,1,1])
+            t = np.ndarray([0,0,0])
+        elif j > reffileindex:
+            # [reffileindex][j]から変換行列を取り出す
+            # この変換行列はreffileindex -> j への変換なので逆変換にする
+            R = rotateMatrixList[reffileindex][j]
+            t = transMatrixList[reffileindex][j]
+            t = -t @ R
+            R = R.T
+        else:
+            # j < reffileindex
+            # この変換行列はj -> reffileindexへの変換
+            R = rotateMatrixList[j][reffileindex]
+            t = transMatrixList[j][reffileindex]
+
+        xyz_j_converted = xyzdf_j[['x','y','z']].values @ R.T + t
+        convertedxyzdata.extend(['{} {} {} {}'.format(s,x,y,z) for s,(x,y,z) in zip(xyzdf_j['elementSymbol'], xyz_j_converted)])
+
+    # 変換結果をxyzファイルに書き出し
+    with open('save.xyz', mode='w') as f:
+        f.write('\n'.join(convertedxyzdata))
+
+
+
+
+
+
+
 
 
 
