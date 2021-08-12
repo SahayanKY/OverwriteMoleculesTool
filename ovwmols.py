@@ -6,32 +6,41 @@ import numpy as np
 import pandas as pd
 from scipy.spatial.distance import squareform
 
-def readXYZFiles(files):
-    xyzdfs = []
-    for xyzfile in files:
-        with open(xyzfile, mode='r') as f:
-            # 3行目以降が必要なのでそこから取り出す
-            xyzdata = f.readlines()[2:]
-        # stripで末端の改行コードを取り除く
-        xyzdata = [s.strip() for s in xyzdata]
-        # 空行は取り除く
-        xyzdata = [s for s in xyzdata if s != '']
-        # pandasのDataFrameに変換する
-        xyzdf = pd.read_csv(io.StringIO(xyzdata), header=None, delim_whitespace=True,
-                            names=['elementSymbol','x','y','z'],
-                            dtype={'elementSymbol':str})
-        xyzdfs.append(xyzdf)
+def readFiles(files, fileformat):
+    """
+    指定されたフォーマットに合わせてファイルを読み込み、
+    DataFrameのリストにする
+    DataFrameの列名はelementSymbol, x, y, zの4つである
+    """
+    if fileformat == 'XYZ':
+        xyzdfs = []
+        for xyzfile in files:
+            with open(xyzfile, mode='r') as f:
+                # 3行目以降が必要なのでそこから取り出す
+                xyzdata = f.readlines()[2:]
+            # stripで末端の改行コードを取り除く
+            xyzdata = [s.strip() for s in xyzdata]
+            # 空行は取り除く
+            xyzdata = [s for s in xyzdata if s != '']
+            # pandasのDataFrameに変換する
+            xyzdf = pd.read_csv(io.StringIO(xyzdata), header=None, delim_whitespace=True,
+                                names=['elementSymbol','x','y','z'],
+                                dtype={'elementSymbol':str})
+            xyzdfs.append(xyzdf)
+    else:
+        raise ValueError('Unsupported file format')
 
     return xyzdfs
 
 def estimate_conversionParameter(X, Y):
-    # https://www.slideshare.net/ttamaki/20090924
-    # X: previous coordinates (n*3 matrix)
-    # Y: current coordinates  (n*3 matrix)
-    #
-    # Y ~ X @ R.T + t
-    # となるようなRとtを求める
-    #
+    """
+    https://www.slideshare.net/ttamaki/20090924
+    X: previous coordinates (n*3 matrix)
+    Y: current coordinates  (n*3 matrix)
+
+    Y ~ X @ R.T + t
+    となるようなRとtを求める
+    """
     X_mean = np.mean(X, axis=0)
     Y_mean = np.mean(Y, axis=0)
 
@@ -55,20 +64,11 @@ def estimate_conversionParameter(X, Y):
 
     return R, t
 
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='ovwmols : Overwrite Molecule Files.')
-
-    parser.add_argument('--format', help='molecule file format', required=True, choices=['XYZ'], type=str)
-    parser.add_argument('--ref', help='conversion reference atoms(0-based)', default=[], nargs='*')
-    parser.add_argument('--file', help='molecule file', required=True, nargs='*')
-
-    # 引数解析
-    args = parser.parse_args()
-    refatoms = [int(s) for s in args.ref]
-    numFile = len(args.file)
-
-    # 各ファイルを読み込みDataFrameに変換する
-    xyzdfs = readXYZFiles(args.file)
+def getConversionParameterList(xyzdfs, refAtomIndexes):
+    """
+    各ファイルを一致させるための変換行列を得る
+    """
+    numFile = len(xyzdfs)
 
     # 各ファイル同士で座標変換による重ね合わせを行い、
     # 最も他のファイルとの一致が良いファイルを後の基準ファイルにする
@@ -80,9 +80,9 @@ if __name__ == '__main__':
         xyzdf_i = xyzdfs[i]
         xyzdf_j = xyzdfs[j]
 
-        if len(refatoms) != 0:
-            xyzdf_i_refs = xyzdf_i.iloc[refatoms]
-            xyzdf_j_refs = xyzdf_j.iloc[refatoms]
+        if len(refAtomIndexes) != 0:
+            xyzdf_i_refs = xyzdf_i.iloc[refAtomIndexes]
+            xyzdf_j_refs = xyzdf_j.iloc[refAtomIndexes]
         else:
             xyzdf_i_refs = xyzdf_i
             xyzdf_j_refs = xyzdf_j
@@ -114,9 +114,8 @@ if __name__ == '__main__':
 
     # rotateMatrixListとtransMatrixListと基準ファイル(reffile)を使って
     # 他のファイルの座標を
-    # 基準ファイルの座標に重なるように変換する
-    # 変換後のデータはリストに記録していき、最後にファイル出力する
-    convertedxyzdata = []
+    # 基準ファイルの座標に重なるように変換するRとtを求め、返す
+    conversionParameterList = []
     for j, xyzdf_j in enumerate(xyzdfs):
         if j == reffileindex:
             # この場合は恒等変換
@@ -134,22 +133,40 @@ if __name__ == '__main__':
             # この変換行列はj -> reffileindexへの変換
             R = rotateMatrixList[j][reffileindex]
             t = transMatrixList[j][reffileindex]
+        conversionParameterList.append([R,t])
+    return conversionParameterList
 
+def main(args):
+    # 各ファイルを読み込みDataFrameのリストに変換する
+    xyzdfs = readFiles(args.file, args.format)
+    # 一致させる基準原子のインデックスを取得
+    refAtomIndexes = [int(s) for s in args.ref]
+
+    # 各ファイルを一致させるための変換行列を取得する
+    conversionParameterList = getConversionParameterList(xyzdfs, refAtomIndexes)
+
+    # 各ファイルを一致させる(変換)
+    # 変換後のデータはリストに記録していき、最後にファイル出力する
+    convertedxyzdata = []
+    for R, t in conversionParameterList:
         xyz_j_converted = xyzdf_j[['x','y','z']].values @ R.T + t
         convertedxyzdata.extend(['{} {} {} {}'.format(s,x,y,z) for s,(x,y,z) in zip(xyzdf_j['elementSymbol'], xyz_j_converted)])
 
     # 変換結果をxyzファイルに書き出し
-    with open('save.xyz', mode='w') as f:
+    with open(args.save, mode='w') as f:
         f.write('\n'.join(convertedxyzdata))
 
 
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description='ovwmols : Overwrite Molecule Files.')
 
+    parser.add_argument('--format', help='molecule file format', required=True, choices=['XYZ'], type=str)
+    parser.add_argument('--ref', help='conversion reference atoms(0-based)', default=[], nargs='*')
+    parser.add_argument('--file', help='molecule file', required=True, nargs='*')
+    parser.add_argument('--save', help='save destination', default='ovwmols.xyz', type=str)
 
-
-
-
-
-
-
+    # 引数解析
+    # main実行
+    main(parser.parse_args())
 
 
