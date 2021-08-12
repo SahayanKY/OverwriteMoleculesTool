@@ -23,7 +23,7 @@ def readFiles(files, fileformat):
             # 空行は取り除く
             xyzdata = [s for s in xyzdata if s != '']
             # pandasのDataFrameに変換する
-            xyzdf = pd.read_csv(io.StringIO(xyzdata), header=None, delim_whitespace=True,
+            xyzdf = pd.read_csv(io.StringIO('\n'.join(xyzdata)), header=None, delim_whitespace=True,
                                 names=['elementSymbol','x','y','z'],
                                 dtype={'elementSymbol':str})
             xyzdfs.append(xyzdf)
@@ -120,7 +120,7 @@ def getConversionParameterList(xyzdfs, refAtomIndexes):
         if j == reffileindex:
             # この場合は恒等変換
             R = np.diag([1,1,1])
-            t = np.ndarray([0,0,0])
+            t = np.array([0,0,0])
         elif j > reffileindex:
             # [reffileindex][j]から変換行列を取り出す
             # この変換行列はreffileindex -> j への変換なので逆変換にする
@@ -148,9 +148,9 @@ def main(args):
     # 各ファイルを一致させる(変換)
     # 変換後のデータはリストに記録していき、最後にファイル出力する
     convertedxyzdata = []
-    for R, t in conversionParameterList:
-        xyz_j_converted = xyzdf_j[['x','y','z']].values @ R.T + t
-        convertedxyzdata.extend(['{} {} {} {}'.format(s,x,y,z) for s,(x,y,z) in zip(xyzdf_j['elementSymbol'], xyz_j_converted)])
+    for xyzdf_i, (R, t) in zip(xyzdfs,conversionParameterList):
+        xyz_i_converted = xyzdf_i[['x','y','z']].values @ R.T + t
+        convertedxyzdata.extend(['{} {} {} {}'.format(s,x,y,z) for s,(x,y,z) in zip(xyzdf_i['elementSymbol'], xyz_i_converted)])
 
     # 変換結果をxyzファイルに書き出し
     with open(args.save, mode='w') as f:
