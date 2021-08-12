@@ -1,0 +1,7 @@
+#!/bin/bash
+
+#このスクリプトの存在する絶対パスを取得
+SCRIPT_DIR=$(cd $(dirname $0); pwd)
+python "${SCRIPT_DIR}/ovwmols.py" "$@"
+
+
