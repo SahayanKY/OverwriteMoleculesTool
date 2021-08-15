@@ -64,40 +64,55 @@ def estimate_conversionParameter(X, Y):
 
     return R, t
 
-def getConversionParameterListRandom(xyzdfs, refAtomIndexes):
-    numFile = len(xyzdfs)
+def getConversionParameterListRandom(dfs, refAtomIndexes):
+    numFile = len(dfs)
 
-    xyzdf_0 = xyzdfs[0]
-    xyzdf_0_refs =xyzdf_0.iloc[refAtomIndexes]
-    # ref内で1つしかない元素を探す
-    num_ref_symbol = xyzdf_0_refs['elementSymbol'].value_counts()
-    onlyone_ref_symbolList = num_ref_symbol[num_ref_symbol==1].index.tolist()
+    #後の原子の対応関係を調べる際に楽をするために元素記号でソートしておく
+    df0 = dfs[0].sort_values('elementSymbol')
+    df1 = dfs[1].sort_values('elementSymbol')
+    #元素記号のソートの結果をrefAtomIndexesに反映する
+    #内容は変わらないが、df0のデータの並び順に合うようになる
+    refAtomIndexes = [i for i in df0.index if i in refAtomIndexes]
+    #df0のインデックスの順番は変わっているのでlocで取得
+    #refAtomIndexesを並び替えたので、df0refsも元素記号順になっている
+    df0refs =df0.loc[refAtomIndexes]
 
-
-    #xyzdf_1でonlyonesymbol原子とそれ以外の原子間の距離行列を計算
-    #xyzdf_0_refsの距離行列と比較し、xyzdf_1内のxyzdf_0_refsと対応する原子を絞り込む
     #
-    #
-    #xyzdf_0_refsとxyzdf_1内の原子の数を元素毎に求める
+    #df0refsとdf1内の原子の数を元素毎に求める
+    #後でdf0refsとdf1の原子間距離の比較をする際に、データを複製する必要があるのでその数を求める
+    #また、df0refs内に1つしかない元素を探すのも目的
     #indexが元素記号、値が各元素の原子数のSeriesになる
-    xyzdf_0_refs_numEachElements = xyzdf_0_refs['elementSymbol'].value_counts().sort_index()
-    xyzdf_1_numEachElements = xyzdf_1['elementSymbol'].value_counts().sort_index()
+    #value_counts()では多い順に元素が並んでしまうため、sort_index()で元素記号順に並べ直す
+    df0refs_numEachElements = df0refs['elementSymbol'].value_counts().sort_index()
+    df1_numEachElements = df1['elementSymbol'].value_counts().sort_index()
+
+    # ref内で1つしかない元素を探す
+    onlyone_ref_symbolList = df0refs_numEachElements[df0refs_numEachElements==1].index.tolist()
 
 
+    #df0refsと対応するdf1内の原子を絞り込む
     if len(onlyone_ref_symbolList) > 0:
         #TODO ここ、[0]じゃなくて、xyzdf_0にもxyzdf_1にも少ない元素がいいね
         ele = onlyone_ref_symbolList[0]
 
-        #indexがeleである行を除く
-        #indexが'C'である行を除いたseriesが返る
-        #testseries.loc[~(testseries.index=='C')]
-        xyzdf_0_refs_numEachElements_except = xyzdf_0_refs_numEachElements.loc[~(xyzdf_0_refs_numEachElements.index==ele)]
-        xyzdf_1_numEachElements_except = xyzdf_1_numEachElements.loc[~(xyzdf_1_numEachElements.index==ele)]
-
-        #refdis = squareform(pdist(xyzdf0_ref[['x','y','z']]))[2]
-        #refdis = np.delete(refdis,2)
-        #xyzdf_1_Odis = cdist(xyzdf_1[xyzdf_1['elementSymbol']=='O'][['x','y','z']], xyzdf_1[xyzdf_1['elementSymbol']!='O'][['x','y','z']])
+        #df1中の各原子とele候補(df1内で1つだけとは限らない)の距離行列を計算
+        #df0refsの距離行列と比較することでdf1の原子を絞る
         #
+        #df0refs内でのeleとの距離行列を計算
+        df0refs_eleIndex = np.where(df0refs['elementSymbol']==ele)
+        df0refs_dis = squareform(pdist(df0refs[['x','y','z']]))[df0refs_eleIndex]
+        #df1内でのele(候補)との距離行列を計算
+        df1_dis = cdist(df1[df1['elementSymbol']==ele][['x','y','z']], df1[['x','y','z']])
+        #
+
+        #最終的にdf1candirefsを出す
+
+
+    else:
+        #絞りこむ手段がなかったため、総当たり式にする
+        #TODO DataFrameで渡すかは上の実装が完了しないと分からない
+        df1candirefs = df1
+
 
     for j in range(1,numFile):
         xyzdf_j = xyzdfs[j]
