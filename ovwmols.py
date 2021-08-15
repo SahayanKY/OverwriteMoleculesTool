@@ -92,8 +92,8 @@ def getConversionParameterListRandom(dfs, refAtomIndexes):
 
     #df0refsと対応するdf1内の原子を絞り込む
     if len(onlyone_ref_symbolList) > 0:
-        #TODO ここ、[0]じゃなくて、xyzdf_0にもxyzdf_1にも少ない元素がいいね
-        ele = onlyone_ref_symbolList[0]
+        #onlyone_ref_symbolListに含まれる元素の内、df1内でも少ない元素を選定 -> 元素記号(str)を取得
+        ele = df1_numEachElements.loc[onlyone_ref_symbolList].idxmin()
 
         #df1中の各原子とele候補(df1内で1つだけとは限らない)の距離行列を計算
         #df0refsの距離行列と比較することでdf1の原子を絞る
