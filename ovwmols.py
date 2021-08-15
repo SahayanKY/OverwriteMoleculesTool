@@ -4,7 +4,7 @@ import itertools
 
 import numpy as np
 import pandas as pd
-from scipy.spatial.distance import squareform
+from scipy.spatial.distance import squareform, cdist, pdist
 
 def readFiles(files, fileformat):
     """
@@ -63,6 +63,49 @@ def estimate_conversionParameter(X, Y):
     t = Y_mean - X_mean @ R.T
 
     return R, t
+
+def getConversionParameterListRandom(xyzdfs, refAtomIndexes):
+    numFile = len(xyzdfs)
+
+    xyzdf_0 = xyzdfs[0]
+    xyzdf_0_refs =xyzdf_0.iloc[refAtomIndexes]
+    # ref内で1つしかない元素を探す
+    num_ref_symbol = xyzdf_0_refs['elementSymbol'].value_counts()
+    onlyone_ref_symbolList = num_ref_symbol[num_ref_symbol==1].index.tolist()
+
+
+    #xyzdf_1でonlyonesymbol原子とそれ以外の原子間の距離行列を計算
+    #xyzdf_0_refsの距離行列と比較し、xyzdf_1内のxyzdf_0_refsと対応する原子を絞り込む
+    #
+    #
+    #xyzdf_0_refsとxyzdf_1内の原子の数を元素毎に求める
+    #indexが元素記号、値が各元素の原子数のSeriesになる
+    xyzdf_0_refs_numEachElements = xyzdf_0_refs['elementSymbol'].value_counts().sort_index()
+    xyzdf_1_numEachElements = xyzdf_1['elementSymbol'].value_counts().sort_index()
+
+
+    if len(onlyone_ref_symbolList) > 0:
+        #TODO ここ、[0]じゃなくて、xyzdf_0にもxyzdf_1にも少ない元素がいいね
+        ele = onlyone_ref_symbolList[0]
+
+        #indexがeleである行を除く
+        #indexが'C'である行を除いたseriesが返る
+        #testseries.loc[~(testseries.index=='C')]
+        xyzdf_0_refs_numEachElements_except = xyzdf_0_refs_numEachElements.loc[~(xyzdf_0_refs_numEachElements.index==ele)]
+        xyzdf_1_numEachElements_except = xyzdf_1_numEachElements.loc[~(xyzdf_1_numEachElements.index==ele)]
+
+        #refdis = squareform(pdist(xyzdf0_ref[['x','y','z']]))[2]
+        #refdis = np.delete(refdis,2)
+        #xyzdf_1_Odis = cdist(xyzdf_1[xyzdf_1['elementSymbol']=='O'][['x','y','z']], xyzdf_1[xyzdf_1['elementSymbol']!='O'][['x','y','z']])
+        #
+
+    for j in range(1,numFile):
+        xyzdf_j = xyzdfs[j]
+
+
+
+
+    pass
 
 def getConversionParameterList(xyzdfs, refAtomIndexes):
     """
