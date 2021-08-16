@@ -70,8 +70,14 @@ def estimate_conversionParameter(X, Y):
 
     return R, t, score
 
-def getConversionParameterListRandom(dfs, refAtomIndexes):
-    numFile = len(dfs)
+def getCandidates_for_df1refsIndexes(df0, df1, df0refsIndexes, bruteForce):
+    """
+    df0とdf1を見比べて、df0refsに対応するdf1の原子はどれかの候補を挙げる
+    Iteratorが返る
+    df0, df1 : 元素記号でソートされているdf
+    bruteForce : 総当たり式にするか
+    """
+    #TODO 引数df0からdf0refsに変えて、df0refsIndexesを除いてもいいんじゃないか？
 
     #後の原子の対応関係を調べる際に楽をするために元素記号でソートしておく
     df0 = dfs[0].sort_values('elementSymbol')
@@ -120,17 +126,39 @@ def getConversionParameterListRandom(dfs, refAtomIndexes):
         df1candirefs = df1
 
 
-    for j in range(1,numFile):
-        xyzdf_j = xyzdfs[j]
+    return None
 
 
-
-
-    pass
-
-def getConversionParameterList(dfs, refAtomIndexes):
+def getConversionParameter(df0, df1, df0refsIndexes, sorted, bruteForce=False):
     """
-    各ファイルを一致させるための変換行列を得る
+    df1を変換してdf0に重ねるようなRとtを求める
+    sorted : df0とdf1の原子の順番が予め合わせられている場合
+    df0refsIndexes : df0の基準原子のインデックス
+    """
+
+    if sorted:
+        df1refsIndexesIterator = [df0refsIndexes]
+    else:
+        df1refsIndexesIterator = getCandidates_for_df1refsIndexes(df0, df1, df0refsIndexes, bruteForce)
+    #TODO ソートの関係でilocが適切なのかlocが適切なのかよく考える
+
+    df1xyz = df1[['x','y','z']]
+    minimumScore = np.inf
+    for df1refsIndexes in df1refsIndexesIterator:
+        df1refsIndexes = list(df1refsIndexes)
+        X = df1xyz.iloc[df1refsIndexes].values
+        R, t, score = estimate_conversionParameter(X, Y)
+        if score < minimumScore:
+            minimumScore = score
+            minimumdf1refsIndexes = df1refsIndexes
+            minimumR = R
+            minimumt = t
+
+    return minimumR, minimumt, minimumdf1refsIndexes
+
+def getMostSuitableConversionParameterList(dfs, refAtomIndexesList):
+    """
+    各ファイルを最も一致させるための変換行列を得る
     """
     numFile = len(dfs)
 
@@ -143,6 +171,8 @@ def getConversionParameterList(dfs, refAtomIndexes):
         # i < j
         df_i = dfs[i]
         df_j = dfs[j]
+        refAtomIndexes_i = refAtomIndexesList[i]
+        refAtomIndexes_j = refAtomIndexesList[j]
 
         if len(refAtomIndexes) != 0:
             df_i_refs = df_i.iloc[refAtomIndexes]
@@ -150,9 +180,6 @@ def getConversionParameterList(dfs, refAtomIndexes):
         else:
             df_i_refs = df_i
             df_j_refs = df_j
-
-        # TODO
-        # assertとしてxyzdf_i_refsとxyzdf_j_refsの元素記号が一致しているか確認する
 
         # DataFrameとしてはここでは使わないのでndarrayに変換
         xyz_i_refs = df_i_refs[['x','y','z']].values
@@ -199,10 +226,21 @@ def main(args):
     # 各ファイルを読み込みDataFrameのリストに変換する
     dfs = readFiles(args.file, args.format)
     # 一致させる基準原子のインデックスを取得
-    refAtomIndexes = [int(s) for s in args.ref]
+    df0refsIndexes = [int(s) for s in args.ref]
 
     # 各ファイルを一致させるための変換行列を取得する
-    conversionParameterList = getConversionParameterList(dfs, refAtomIndexes)
+    if args.sorted==False or args.best==False:
+        refAtomIndexes = []
+        conversionParameterList = []
+        for j in range(1,len(dfs)):
+            R, t, dfjrefsIndexes = getConversionParameter(dfs[0], dfs[j], df0refsIndexes, args.sorted)
+            refAtomIndexes.append(dfjrefsIndexes)
+            conversionParameterList.append([R,t])
+    else:
+        refAtomIndexes = df0refsIndexes * len(dfs)
+
+    if args.best==True:
+        conversionParameterList = getMostSuitableConversionParameterList(dfs, refAtomIndexes)
 
     # 各ファイルを一致させる(変換)
     # 変換後のデータはリストに記録していき、最後にファイル出力する
@@ -222,6 +260,8 @@ if __name__ == '__main__':
     parser.add_argument('--format', help='molecule file format', required=True, choices=['XYZ'], type=str)
     parser.add_argument('--ref', help='conversion reference atoms(0-based)', default=[], nargs='*')
     parser.add_argument('--file', help='molecule file', required=True, nargs='*')
+    parser.add_argument('--sorted', help='molecule file is sorted already', action='store_true')
+    parser.add_argument('--best', help='convert to best fit', action='store_true')
     parser.add_argument('--save', help='save destination', default='ovwmols.xyz', type=str)
 
     # 引数解析
