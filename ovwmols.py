@@ -12,8 +12,8 @@ def readFiles(files, fileformat):
     DataFrameのリストにする
     DataFrameの列名はelementSymbol, x, y, zの4つである
     """
+    dfs = []
     if fileformat == 'XYZ':
-        xyzdfs = []
         for xyzfile in files:
             with open(xyzfile, mode='r') as f:
                 # 3行目以降が必要なのでそこから取り出す
@@ -23,14 +23,14 @@ def readFiles(files, fileformat):
             # 空行は取り除く
             xyzdata = [s for s in xyzdata if s != '']
             # pandasのDataFrameに変換する
-            xyzdf = pd.read_csv(io.StringIO('\n'.join(xyzdata)), header=None, delim_whitespace=True,
+            df = pd.read_csv(io.StringIO('\n'.join(xyzdata)), header=None, delim_whitespace=True,
                                 names=['elementSymbol','x','y','z'],
                                 dtype={'elementSymbol':str})
-            xyzdfs.append(xyzdf)
+            dfs.append(df)
     else:
         raise ValueError('Unsupported file format')
 
-    return xyzdfs
+    return dfs
 
 def estimate_conversionParameter(X, Y):
     """
@@ -62,7 +62,13 @@ def estimate_conversionParameter(X, Y):
     # Y_mean = X_mean @ R.T + tより計算
     t = Y_mean - X_mean @ R.T
 
-    return R, t
+    # Rとtを使ってXからYを予測し、一致具合を二乗和で評価
+    # n*3行列
+    errorxyz = Y - (X @ R.T + t)
+    # score評価、記録
+    score = np.sum(np.power(errorxyz,2))
+
+    return R, t, score
 
 def getConversionParameterListRandom(dfs, refAtomIndexes):
     numFile = len(dfs)
@@ -122,11 +128,11 @@ def getConversionParameterListRandom(dfs, refAtomIndexes):
 
     pass
 
-def getConversionParameterList(xyzdfs, refAtomIndexes):
+def getConversionParameterList(dfs, refAtomIndexes):
     """
     各ファイルを一致させるための変換行列を得る
     """
-    numFile = len(xyzdfs)
+    numFile = len(dfs)
 
     # 各ファイル同士で座標変換による重ね合わせを行い、
     # 最も他のファイルとの一致が良いファイルを後の基準ファイルにする
@@ -135,33 +141,28 @@ def getConversionParameterList(xyzdfs, refAtomIndexes):
     transMatrixList = [[0]*numFile for i in range(numFile)]
     for i, j in itertools.combinations(range(numFile), 2):
         # i < j
-        xyzdf_i = xyzdfs[i]
-        xyzdf_j = xyzdfs[j]
+        df_i = dfs[i]
+        df_j = dfs[j]
 
         if len(refAtomIndexes) != 0:
-            xyzdf_i_refs = xyzdf_i.iloc[refAtomIndexes]
-            xyzdf_j_refs = xyzdf_j.iloc[refAtomIndexes]
+            df_i_refs = df_i.iloc[refAtomIndexes]
+            df_j_refs = df_j.iloc[refAtomIndexes]
         else:
-            xyzdf_i_refs = xyzdf_i
-            xyzdf_j_refs = xyzdf_j
+            df_i_refs = df_i
+            df_j_refs = df_j
 
         # TODO
         # assertとしてxyzdf_i_refsとxyzdf_j_refsの元素記号が一致しているか確認する
 
         # DataFrameとしてはここでは使わないのでndarrayに変換
-        xyz_i_refs = xyzdf_i_refs[['x','y','z']].values
-        xyz_j_refs = xyzdf_j_refs[['x','y','z']].values
+        xyz_i_refs = df_i_refs[['x','y','z']].values
+        xyz_j_refs = df_j_refs[['x','y','z']].values
         # 変換パラメータ推定
         # Rとtを求める
-        R, t = estimate_conversionParameter(xyz_i_refs, xyz_j_refs)
+        R, t, score = estimate_conversionParameter(xyz_i_refs, xyz_j_refs)
         rotateMatrixList[i][j] = R
         transMatrixList[i][j] = t
 
-        # Rとtを使ってxyzdf_iからxyzdf_jを予測し、一致具合を二乗和で評価
-        # n*3行列
-        errorxyz = xyz_j_refs - (xyz_i_refs @ R.T + t)
-        # score評価、記録
-        score = np.sum(np.power(errorxyz,2))
         scorelist[i][j] = score
         scorelist[j][i] = score
 
@@ -174,7 +175,7 @@ def getConversionParameterList(xyzdfs, refAtomIndexes):
     # 他のファイルの座標を
     # 基準ファイルの座標に重なるように変換するRとtを求め、返す
     conversionParameterList = []
-    for j, xyzdf_j in enumerate(xyzdfs):
+    for j, df_j in enumerate(dfs):
         if j == reffileindex:
             # この場合は恒等変換
             R = np.diag([1,1,1])
@@ -196,19 +197,19 @@ def getConversionParameterList(xyzdfs, refAtomIndexes):
 
 def main(args):
     # 各ファイルを読み込みDataFrameのリストに変換する
-    xyzdfs = readFiles(args.file, args.format)
+    dfs = readFiles(args.file, args.format)
     # 一致させる基準原子のインデックスを取得
     refAtomIndexes = [int(s) for s in args.ref]
 
     # 各ファイルを一致させるための変換行列を取得する
-    conversionParameterList = getConversionParameterList(xyzdfs, refAtomIndexes)
+    conversionParameterList = getConversionParameterList(dfs, refAtomIndexes)
 
     # 各ファイルを一致させる(変換)
     # 変換後のデータはリストに記録していき、最後にファイル出力する
     convertedxyzdata = []
-    for xyzdf_i, (R, t) in zip(xyzdfs,conversionParameterList):
-        xyz_i_converted = xyzdf_i[['x','y','z']].values @ R.T + t
-        convertedxyzdata.extend(['{} {} {} {}'.format(s,x,y,z) for s,(x,y,z) in zip(xyzdf_i['elementSymbol'], xyz_i_converted)])
+    for df_i, (R, t) in zip(dfs,conversionParameterList):
+        xyz_i_converted = df_i[['x','y','z']].values @ R.T + t
+        convertedxyzdata.extend(['{} {} {} {}'.format(s,x,y,z) for s,(x,y,z) in zip(df_i['elementSymbol'], xyz_i_converted)])
 
     # 変換結果をxyzファイルに書き出し
     with open(args.save, mode='w') as f:
