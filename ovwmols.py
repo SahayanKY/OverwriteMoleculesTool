@@ -27,6 +27,22 @@ def readFiles(files, fileformat):
                                 names=['elementSymbol','x','y','z'],
                                 dtype={'elementSymbol':str})
             dfs.append(df)
+    elif fileformat == 'GJF':
+        for gjffile in files:
+            with open(gjffile, mode='r') as f:
+                gjfdata = f.readlines()
+            # 分子指定セクションを取得
+            # 2回目の空行の次からが分子指定セクション
+            start, end = [i for i, s in enumerate(gjfdata) if re.match(r'^[ \t\n]+$', s)][1:3]
+            # 空行の次(+1)は電荷・多重度の行なので、更に+1
+            start += 2
+            # 末端の改行コードを取り除く
+            xyzdata = [s.strip() for s in gjfdata[start:end]]
+            # pandasのDataFrameに変換する
+            df = pd.read_csv(io.StringIO('\n'.join(xyzdata)), header=None, delim_whitespace=True,
+                                names=['elementSymbol','x','y','z'],
+                                dtype={'elementSymbol':str})
+            dfs.append(df)
     else:
         raise ValueError('Unsupported file format')
 
@@ -257,7 +273,7 @@ def main(args):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='ovwmols : Overwrite Molecule Files.')
 
-    parser.add_argument('--format', help='molecule file format', required=True, choices=['XYZ'], type=str)
+    parser.add_argument('--format', help='molecule file format', required=True, choices=['XYZ','GJF'], type=str)
     parser.add_argument('--ref', help='conversion reference atoms(0-based)', default=[], nargs='*')
     parser.add_argument('--file', help='molecule file', required=True, nargs='*')
     parser.add_argument('--sorted', help='molecule file is sorted already', action='store_true')
