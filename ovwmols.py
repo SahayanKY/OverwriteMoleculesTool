@@ -302,6 +302,11 @@ def main(args):
         convertedxyzdata.extend(['{} {} {} {}'.format(s,x,y,z) for s,(x,y,z) in zip(df_i['elementSymbol'], xyz_i_converted)])
 
     # 変換結果をxyzファイルに書き出し
+    # xyzの1行目は総原子数なので、dfsから取得する
+    totalNumAtoms = sum([len(d) for d in dfs])
+    convertedxyzdata.insert(0, str(totalNumAtoms))
+    # xyzの2行目は任意だが、元の入力ファイル名にする
+    convertedxyzdata.insert(1, 'ovwmols: '+' '.join(args.file))
     with open(args.save, mode='w') as f:
         f.write('\n'.join(convertedxyzdata))
 
