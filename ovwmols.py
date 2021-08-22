@@ -87,24 +87,13 @@ def estimate_conversionParameter(X, Y):
 
     return R, t, score
 
-def getCandidates_for_df1refsIndexes(df0, df1, df0refsIndexes, bruteForce):
+def getCandidates_for_df1refsIndexes(df0refs, df1, bruteForce):
     """
     df0とdf1を見比べて、df0refsに対応するdf1の原子はどれかの候補を挙げる
     Iteratorが返る
-    df0, df1 : 元素記号でソートされているdf
+    df0refs, df1 : 元素記号でソートされているdf
     bruteForce : 総当たり式にするか
     """
-    #TODO 引数df0からdf0refsに変えて、df0refsIndexesを除いてもいいんじゃないか？
-
-    #後の原子の対応関係を調べる際に楽をするために元素記号でソートしておく
-    df0 = dfs[0].sort_values('elementSymbol')
-    df1 = dfs[1].sort_values('elementSymbol')
-    #元素記号のソートの結果をrefAtomIndexesに反映する
-    #内容は変わらないが、df0のデータの並び順に合うようになる
-    refAtomIndexes = [i for i in df0.index if i in refAtomIndexes]
-    #df0のインデックスの順番は変わっているのでlocで取得
-    #refAtomIndexesを並び替えたので、df0refsも元素記号順になっている
-    df0refs = df0.loc[refAtomIndexes]
 
     #
     #df0refsとdf1内の原子の数を元素毎に求める
@@ -187,10 +176,13 @@ def getConversionParameter(df0, df1, df0refsIndexes, sorted, bruteForce=False):
     sorted : df0とdf1の原子の順番が予め合わせられている場合
     df0refsIndexes : df0の基準原子のインデックス
     """
-    df0refs = df0.loc[df0refsIndexes]
+
+    #後の原子の対応関係を調べる際に楽をするために元素記号でソートしておく
+    df0refs = df0.loc[df0refsIndexes].sort_values('elementSymbol')
+    df1 = df1.sort_values('elementSymbol')
 
     if sorted:
-        df1refsIndexesIterator = [df0refsIndexes]
+        df1refsIndexesIterator = [list(df0refs.index)]
     else:
         df1refsIndexesIterator = getCandidates_for_df1refsIndexes(df0refs, df1, bruteForce)
 
@@ -226,13 +218,8 @@ def getMostSuitableConversionParameterList(dfs, refAtomIndexesList):
         df_j = dfs[j]
         refAtomIndexes_i = refAtomIndexesList[i]
         refAtomIndexes_j = refAtomIndexesList[j]
-
-        if len(refAtomIndexes) != 0:
-            df_i_refs = df_i.loc[refAtomIndexes]
-            df_j_refs = df_j.loc[refAtomIndexes]
-        else:
-            df_i_refs = df_i
-            df_j_refs = df_j
+        df_i_refs = df_i.loc[refAtomIndexes_i]
+        df_j_refs = df_j.loc[refAtomIndexes_j]
 
         # DataFrameとしてはここでは使わないのでndarrayに変換
         xyz_i_refs = df_i_refs[['x','y','z']].values
@@ -283,17 +270,17 @@ def main(args):
 
     # 各ファイルを一致させるための変換行列を取得する
     if args.sorted==False or args.best==False:
-        refAtomIndexes = [df0refsIndexes]
-        conversionParameterList = []
+        refAtomIndexesList = [df0refsIndexes]
+        conversionParameterList = [[np.diag([1,1,1]), np.array([0,0,0])]]
         for j in range(1,len(dfs)):
             R, t, dfjrefsIndexes = getConversionParameter(dfs[0], dfs[j], df0refsIndexes, args.sorted)
-            refAtomIndexes.append(dfjrefsIndexes)
+            refAtomIndexesList.append(dfjrefsIndexes)
             conversionParameterList.append([R,t])
     else:
-        refAtomIndexes = df0refsIndexes * len(dfs)
+        refAtomIndexesList = [df0refsIndexes] * len(dfs)
 
     if args.best==True:
-        conversionParameterList = getMostSuitableConversionParameterList(dfs, refAtomIndexes)
+        conversionParameterList = getMostSuitableConversionParameterList(dfs, refAtomIndexesList)
 
     # 各ファイルを一致させる(変換)
     # 変換後のデータはリストに記録していき、最後にファイル出力する
