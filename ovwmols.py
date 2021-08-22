@@ -95,6 +95,9 @@ def getCandidates_for_df1refsIndexes(df0refs, df1, bruteForce):
     df0refs, df1 : 元素記号でソートされているdf
     bruteForce : 総当たり式にするか
     """
+    #df1に存在してdf0refsに存在しない元素があると邪魔なので、
+    #まずそれを除外する
+    df1 = df1[df1['elementSymbol'].isin(df0refs['elementSymbol'])]
 
     #
     #df0refsとdf1内の原子の数を元素毎に求める
