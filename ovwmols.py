@@ -103,7 +103,7 @@ def getCandidates_for_df1refsIndexes(df0, df1, df0refsIndexes, bruteForce):
     refAtomIndexes = [i for i in df0.index if i in refAtomIndexes]
     #df0のインデックスの順番は変わっているのでlocで取得
     #refAtomIndexesを並び替えたので、df0refsも元素記号順になっている
-    df0refs =df0.loc[refAtomIndexes]
+    df0refs = df0.loc[refAtomIndexes]
 
     #
     #df0refsとdf1内の原子の数を元素毎に求める
@@ -131,18 +131,53 @@ def getCandidates_for_df1refsIndexes(df0, df1, df0refsIndexes, bruteForce):
         df0refs_dis = squareform(pdist(df0refs[['x','y','z']]))[df0refs_eleIndex]
         #df1内でのele(候補)との距離行列を計算
         df1_dis = cdist(df1[df1['elementSymbol']==ele][['x','y','z']], df1[['x','y','z']])
-        #
 
-        #最終的にdf1candirefsを出す
+        #df0refs_disとdf1_disの原子対同士を比較するため、
+        #それぞれを列・行方向に複製し、差をとることで全組合せを比較
+        #→ゼロに近い=原子対がdf0とdf1とで対応
+        #まずはdf0refs_disについて
+        df0refs_disrepeat = np.repeat(df0refs_dis,
+                                      np.repeat(df1_numEachElements,df0refs_numEachElements),
+                                     )
+        df0refs_disrepeat = np.tile(df0refs_disrepeat,(len(df1_dis),1))
+        #df1_disの複製
+        df1_disrepeat = np.hstack(
+            [np.tile(ar, n) for ar, n in zip(
+                np.split(df1_dis, np.cumsum(df1_numEachElements), axis=1)[:-1],
+                df0refs_numEachElements
+            )]
+        )
+        #差を取り、距離が近い原子対(True)を探す
+        #0.5は閾値
+        matchingResult = np.abs(df1_disrepeat - df0refs_disrepeat) < 0.5
 
+        #df0refsの原子と対応している候補を出す
+        #X_formOrigin[i][j] -> df0refs.iloc[j]と対応しているdf1の原子のインデックス(loc)
+        X_formOrigin = [
+            [
+                df1.iloc[df1_eleiidxs[np.where(matchingResult_df0refsi)].tolist()].index for matchingResult_df0refsi, df1_eleiidxs in zip(
+                            np.split(matchingResult[i],
+                                     np.cumsum(np.repeat(df1_numEachElements,df0refs_numEachElements))
+                                    )[:-1],
+                            np.repeat(np.split(range(len(df1)),np.cumsum(df1_numEachElements))[:-1], df0refs_numEachElements)
+                        )
+            ] for i in range(len(matchingResult))
+        ]
+        #例えば
+        #X_formOriginが[[[1, 3], [2], [8], [7]], [[], [], [14, 15], [13]]]のとき、
+        #[1,2,8,7], [3,2,8,7]
+        #を生成するiteratorを作る
+        #for X_formIndexes in iterator:
+        #    df1.loc[list(X_formIndexes)]
+        #で並び順がdf0refsに対応したdf1refs候補が得られる
+        return itertools.chain.from_iterable([itertools.product(*X_formOrigin[i]) for i in range(len(X_formOrigin))])
 
     else:
         #絞りこむ手段がなかったため、総当たり式にする
-        #TODO DataFrameで渡すかは上の実装が完了しないと分からない
-        df1candirefs = df1
-
-
-    return None
+        return itertools.product(*np.repeat(
+            [df1.iloc[idxs].index for idxs in np.split(range(len(df1)),np.cumsum(df1_numEachElements))[:-1]],
+            df0refs_numEachElements)
+        )
 
 
 def getConversionParameter(df0, df1, df0refsIndexes, sorted, bruteForce=False):
@@ -151,19 +186,20 @@ def getConversionParameter(df0, df1, df0refsIndexes, sorted, bruteForce=False):
     sorted : df0とdf1の原子の順番が予め合わせられている場合
     df0refsIndexes : df0の基準原子のインデックス
     """
+    df0refs = df0.loc[df0refsIndexes]
 
     if sorted:
         df1refsIndexesIterator = [df0refsIndexes]
     else:
-        df1refsIndexesIterator = getCandidates_for_df1refsIndexes(df0, df1, df0refsIndexes, bruteForce)
-    #TODO ソートの関係でilocが適切なのかlocが適切なのかよく考える
+        df1refsIndexesIterator = getCandidates_for_df1refsIndexes(df0refs, df1, bruteForce)
 
+    df0refsxyz = df0refs[['x','y','z']].values
     df1xyz = df1[['x','y','z']]
     minimumScore = np.inf
     for df1refsIndexes in df1refsIndexesIterator:
         df1refsIndexes = list(df1refsIndexes)
-        X = df1xyz.iloc[df1refsIndexes].values
-        R, t, score = estimate_conversionParameter(X, Y)
+        X = df1xyz.loc[df1refsIndexes].values
+        R, t, score = estimate_conversionParameter(X, df0refsxyz)
         if score < minimumScore:
             minimumScore = score
             minimumdf1refsIndexes = df1refsIndexes
@@ -191,8 +227,8 @@ def getMostSuitableConversionParameterList(dfs, refAtomIndexesList):
         refAtomIndexes_j = refAtomIndexesList[j]
 
         if len(refAtomIndexes) != 0:
-            df_i_refs = df_i.iloc[refAtomIndexes]
-            df_j_refs = df_j.iloc[refAtomIndexes]
+            df_i_refs = df_i.loc[refAtomIndexes]
+            df_j_refs = df_j.loc[refAtomIndexes]
         else:
             df_i_refs = df_i
             df_j_refs = df_j
