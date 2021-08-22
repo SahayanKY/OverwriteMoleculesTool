@@ -246,7 +246,7 @@ def main(args):
 
     # 各ファイルを一致させるための変換行列を取得する
     if args.sorted==False or args.best==False:
-        refAtomIndexes = []
+        refAtomIndexes = [df0refsIndexes]
         conversionParameterList = []
         for j in range(1,len(dfs)):
             R, t, dfjrefsIndexes = getConversionParameter(dfs[0], dfs[j], df0refsIndexes, args.sorted)
