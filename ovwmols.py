@@ -36,8 +36,9 @@ def readFiles(files, fileformat):
             start, end = [i for i, s in enumerate(gjfdata) if re.match(r'^[ \t\n]+$', s)][1:3]
             # 空行の次(+1)は電荷・多重度の行なので、更に+1
             start += 2
+            # 元素記号とx,y,zのデータの部分のみを取り出し、
             # 末端の改行コードを取り除く
-            xyzdata = [s.strip() for s in gjfdata[start:end]]
+            xyzdata = [re.sub('(([^ \t\n]+[ \t\n]+){4}).+', r'\1', s).strip() for s in gjfdata[start:end]]
             # pandasのDataFrameに変換する
             df = pd.read_csv(io.StringIO('\n'.join(xyzdata)), header=None, delim_whitespace=True,
                                 names=['elementSymbol','x','y','z'],
