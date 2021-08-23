@@ -2,6 +2,7 @@ import argparse
 import io
 import re
 import itertools
+import warnings
 
 import numpy as np
 import pandas as pd
@@ -145,6 +146,8 @@ def getCandidates_for_df1refsIndexes(df0refs, df1, bruteForce):
         #0.5は閾値
         matchingResult = np.abs(df1_disrepeat - df0refs_disrepeat) < 0.5
 
+        #次のnp.repeat(np.split(*),*)でwarningsが出るので表示無効にしておく
+        warnings.simplefilter('ignore')
         #df0refsの原子と対応している候補を出す
         #X_formOrigin[i][j] -> df0refs.iloc[j]と対応しているdf1の原子のインデックス(loc)
         X_formOrigin = [
@@ -157,6 +160,7 @@ def getCandidates_for_df1refsIndexes(df0refs, df1, bruteForce):
                         )
             ] for i in range(len(matchingResult))
         ]
+        warnings.resetwarnings()
         #例えば
         #X_formOriginが[[[1, 3], [2], [8], [7]], [[], [], [14, 15], [13]]]のとき、
         #[1,2,8,7], [3,2,8,7]
